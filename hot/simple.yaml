@@ -1,4 +1,4 @@
-heat_template_version: 2013-05-23
+heat_template_version: wallaby
 
 parameters:
   flavor:
@@ -14,9 +14,8 @@ parameters:
     description: Image name or ID
     default: Ubuntu 24.04 Noble Numbat x86_64
   key_name:
-    default: ''
     type: string
-    description: Keypair to inject into newly created servers
+    description: Name of the created keypair
   public_net:
     type: string
     description: Public network ID
@@ -27,6 +26,8 @@ parameters:
     type: string
     description: "Subnetpool name or ID (IPv6 only)"
     default: ipv6_tenant_pool
+    constraints:
+      - custom_constraint: neutron.subnetpool
   ipv6_mode:
     type: string
     description: "Mode to be used for address assignment and router advertisement (IPv6 only)"
@@ -43,6 +44,12 @@ parameters:
 
 resources:
 
+  mykey:
+    type: "OS::Nova::KeyPair"
+    properties:
+      name: { get_param: key_name }
+      public_key: { get_file: '/home/training/.ssh/id_ed25519.pub' }
+
   mybox:
     type: "OS::Nova::Server"
     properties:
@@ -52,7 +59,7 @@ resources:
           volume_size: { get_param: volume_size }
           delete_on_termination: true
       flavor: { get_param: flavor }
-      key_name: { get_param: key_name }
+      key_name: { get_resource: mykey }
       config_drive: { get_param: config_drive }
       networks:
         - port: { get_resource: mybox_management_port }
@@ -143,33 +150,29 @@ resources:
 
   router:
     type: OS::Neutron::Router
-
-  router_gateway:
-    type: OS::Neutron::RouterGateway
     properties:
-      router_id: { get_resource: router }
-      network_id: { get_param: public_net }
+      external_gateway_info:
+        network: { get_param: public_net }
 
   router_interface_ipv4:
     type: OS::Neutron::RouterInterface
     properties:
-      router_id: { get_resource: router }
-      subnet_id: { get_resource: mysub_net_ipv4 }
+      router: { get_resource: router }
+      subnet: { get_resource: mysub_net_ipv4 }
 
   router_interface_ipv6:
     type: OS::Neutron::RouterInterface
     properties:
-      router_id: { get_resource: router }
-      subnet_id: { get_resource: mysub_net_ipv6 }
+      router: { get_resource: router }
+      subnet: { get_resource: mysub_net_ipv6 }
 
   myfloating_ip:
     type: "OS::Neutron::FloatingIP"
     properties:
-      floating_network_id: { get_param: public_net }
+      floating_network: { get_param: public_net }
       port_id: { get_resource: mybox_management_port }
     depends_on:
       - router_interface_ipv4
-      - router_gateway
 
 outputs:
   public_ip:
